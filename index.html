@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <title>ORS Test</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.2.0/leaflet.css" type="text/css" crossorigin="">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.2.0/leaflet.js" crossorigin=""></script>
+  <script type="module" src="./node_modules/openrouteservice-js/dist/ors-js-client.js"></script>
+  <script src="bikeshares.js"></script>
+  <script src="bikecrashes.js"></script>
+  <link rel="stylesheet" href="style.css" type="text/css">
+
+  <script type="text/javascript">
+
+    var map;
+
+    function init() {
+      // create map and set center and zoom level
+      map = new L.map('mapid');
+      map.setView([39.961376575134835, -83.00000225284938],11);
+
+      // create and add the Carto basemap
+      var CartoDB_PositronNoLabels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+      });
+      CartoDB_PositronNoLabels.addTo(map)
+
+      // Create and add custom basemap
+      var tiles = L.tileLayer('https://geog585-m5ag8.s3.us-east-2.amazonaws.com/TermProjectBasemap/{z}/{x}/{y}.png');
+      tiles.addTo(map);
+
+      // Establishj variables
+      var bsLayer;
+      var selection;
+      var selectedLayer;
+
+      // Create the bikeshare layer
+      var bsMarkerOptions = {
+        radius: 5,
+        fillColor: "#0198E2",
+        color: "#000000",
+        weight: 1,
+        opacity: 1,
+        fillOpacity: 1
+      };
+
+      function markerSelectedStyle(feature) {
+        return {
+          radius: 7,
+          fillColor: "#F8F81C",
+          color: "#000000",
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 1
+        };
+      }
+
+      function bsOnEachFeature(feature, layer){
+        layer.on({
+          click: function(e) {
+            if (selection) {
+              resetBSStyle();
+            }
+
+            e.target.setStyle(markerSelectedStyle());
+            selection = e.target;
+            selectedLayer = bsLayer;
+
+            // Insert some HTML with the feature name
+            buildBSSummaryLabel(feature);
+
+            L.DomEvent.stopPropagation(e); // stop click event from being propagated further
+          }
+        });
+      }
+
+      var bsLayer = L.geoJSON(bikeshares, {
+        pointToLayer: function (feature, latlng) {
+          return L.circleMarker(latlng, bsMarkerOptions);
+        },
+        onEachFeature: bsOnEachFeature
+      });
+
+      bsLayer.addTo(map)
+
+
+      function buildBSSummaryLabel(currentFeature){
+        var featureName = currentFeature.properties.SITE_NAME || "Unnamed feature";
+        var bikeCount = currentFeature.properties.DOCKS || "?";
+        document.getElementById('bsLabel').innerHTML = '<p style="font-size:18px"><b>' + featureName + '</b><br>Docks: ' + bikeCount + '</p>';
+      }
+
+      function resetBSStyle(){
+        if (selectedLayer === bsLayer) selectedLayer.setStyle(bsMarkerOptions);
+      }
+
+      // Create the crashes layer
+      function crashStyle(feature) {
+        var radiusToUse;
+        var severity = feature.properties.CRASH_SEVE;
+
+
+        if (severity === 1) radiusToUse = 7;
+        else if (severity === 2) radiusToUse = 4;
+        else if (severity === 3) radiusToUse = 3;
+        else if (severity === 4) radiusToUse = 2;
+        else if (severity === 5) radiusToUse = 2;
+
+        return {
+          radius: radiusToUse,
+          fillColor: "#bd222f",
+          color: "#000000",
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 1
+        };
+
+      }
+
+      function severityInterpreter(feature) {
+        var severity = feature.properties.CRASH_SEVE;
+
+        if (severity === 1) return 'Fatal';
+        else if (severity === 2) return 'Serious Injury';
+        else if (severity === 3) return 'Minor Injury';
+        else if (severity === 4) return 'Possible Injury';
+        else if (severity === 5) return 'Property Damage Only';
+      }
+
+      function buildCrashSummaryLabel(currentFeature){
+        var crashDate = currentFeature.properties.CRASH_DATE || "Unknown date";
+        var crashSev = severityInterpreter(currentFeature) || "Unknown";
+        document.getElementById('crashLabel').innerHTML = '<p style="font-size:18px"><b>' + crashDate + '</b><br>Severity: ' + crashSev + '</p>';
+      }
+
+      function crashOnEachFeature(feature, layer){
+        layer.on({
+          click: function(e) {
+            if (selection) {
+              resetCrashStyle();
+            }
+
+            e.target.setStyle(markerSelectedStyle());
+            selection = e.target;
+            selectedLayer = crashLayer;
+
+            // Insert some HTML with the feature name
+            buildCrashSummaryLabel(feature);
+
+            L.DomEvent.stopPropagation(e); // stop click event from being propagated further
+          }
+        });
+      }
+
+      function resetCrashStyle(){
+        if (selectedLayer === crashLayer) selectedLayer.setStyle(crashStyle);
+      }
+
+      var crashLayer = L.geoJSON(bikecrashes, {
+        pointToLayer: function (feature, latlng) {
+          return L.circleMarker(latlng, crashStyle(feature));
+        },
+        onEachFeature: crashOnEachFeature
+      });
+
+      crashLayer.addTo(map)
+
+      // Create the routing functionality
+      const orsDirections = new Openrouteservice.Directions({
+        api_key: "5b3ce3597851110001cf624874eb30769fad4966ad08c7c676ebe3a2"
+      })
+
+      let coords = []
+
+      function routeStyle(feature) {
+        return {
+          color: "#e02214",
+          weight: 5,
+        };
+      }
+
+      function mapRoute(xy) {
+        if (xy.length >= 2) {
+          orsDirections.calculate({
+            coordinates: xy,
+            profile: "cycling-road",
+            extra_info: ["waytype", "steepness"],
+            format: "geojson",
+            api_version: 'v2',
+          })
+                  .then(function (json) {
+                    let response = JSON.stringify(json, null, "\t")
+                    console.log(response);
+                    var routeLayer = L.geoJSON(json, {
+                      style: routeStyle
+                    }).addTo(map)
+                  })
+          coords = []
+        }
+      }
+
+      map.on('click', function(ev){
+        var latlng = map.mouseEventToLatLng(ev.originalEvent);
+        coords.push([latlng.lng, latlng.lat])
+        console.log(coords);
+        L.marker(ev.latlng).addTo(map)
+      });
+
+      var buttonElement = document.getElementById("routeButton")
+      buttonElement.addEventListener("click", function () { mapRoute(coords); })
+    }
+
+  </script>
+</head>
+<body onload="init()">
+<h1 id="title">Columbus Bike Safety</h1>
+<h2>Map</h2>
+<div id="mapid"></div>
+<div id="buttonDiv">
+  <button id="routeButton">Create Route</button>
+</div>
+<div id="bsLabel">
+  <p>Click a bikeshare location (blue point) on the map to get more information.</p></div>
+<div id="crashLabel">
+  <p>Click a crash location (red point) on the map to get more information.</p></div>
+</body>
+</html>

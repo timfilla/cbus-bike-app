@@ -1,0 +1,8 @@
+{
+  "name": "OpenRouteService",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "openrouteservice-js": "^0.3.2"
+  }
+}
